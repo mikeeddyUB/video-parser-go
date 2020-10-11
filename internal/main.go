@@ -17,6 +17,7 @@ import (
 	"strconv"
 )
 
+const (fps = 4)
 
 func main(){
 
@@ -44,8 +45,9 @@ func main(){
 	}
 
 	//sourceFile := "./source/IMG_1532.MOV"
+
 	sourceFile := "./source/LAE.MOV"
-	err = svc.ExtractFrames(sourceFile, "./dist", 1)
+	err = svc.ExtractFrames(sourceFile, "./dist", fps)
 	if err != nil {
 		fmt.Println("failed extracting frames")
 		fmt.Println(err)
@@ -57,8 +59,10 @@ func main(){
 	var tempValues []float64
 	var secondValues []float64
 	// 00001 -> 00044
-	//for i := 1; i < 45; i++ {
-	for i := 1; i < 15; i++ {
+	//totalFiles := 45
+	totalFiles := 174
+	for i := 1; i < totalFiles; i++ {
+	//for i := 1; i < 15; i++ {
 		file := fmt.Sprintf("./dist/frames%05d.jpg", i)
 		fmt.Println(file)
 		f, err := os.Open(file)
@@ -78,71 +82,64 @@ func main(){
 		seconds, err := getTextFromImage(4)
 
 		//secondsNum, err := strconv.Atoi(seconds)
-		fmt.Println("checking condition")
-		fmt.Println(power)
-		fmt.Println(temp)
-		fmt.Println(impedance)
-		fmt.Println(seconds)
+		//fmt.Println("checking condition")
+		//fmt.Println(power)
+		//fmt.Println(temp)
+		//fmt.Println(impedance)
+		//fmt.Println(seconds)
 		if len(power) > 0 && len(temp) > 0 && len(impedance) > 0 && len(seconds) > 0 {
 			fmt.Println(fmt.Sprintf("file      : %s", file))
 			fmt.Println(fmt.Sprintf("power     : %s", power))
 			fmt.Println(fmt.Sprintf("temp      : %s", temp))
 			fmt.Println(fmt.Sprintf("impedance : %s", impedance))
 			fmt.Println(fmt.Sprintf("seconds   : %s", seconds))
+			_, err := strconv.Atoi(power)
+			if err != nil {
+				//panic(err)
+				continue
+			}
+
 			impedanceInt, err := strconv.Atoi(impedance)
 			if err != nil {
-				panic(err)
+				//panic(err)
+				continue
 			}
 
 			tempInt, err := strconv.Atoi(temp)
 			if err != nil {
-				panic(err)
+				//panic(err)
+				continue
 			}
 
 			secondInt, err := strconv.Atoi(seconds)
 			if err != nil {
-				panic(err)
+				//panic(err)
+				continue
 			}
 
-			fmt.Println(impedance)
-			fmt.Println(impedanceInt)
-			fmt.Println(float64(impedanceInt))
+			//fmt.Println(impedance)
+			//fmt.Println(impedanceInt)
+			//fmt.Println(float64(impedanceInt))
 			impedanceValues = append(impedanceValues, float64(impedanceInt))
 			tempValues = append(tempValues, float64(tempInt))
-			secondValues = append(secondValues, float64(secondInt))
-			// impedance over time (primary y axis)
-			// temperature over time (secondary y axis)
-
-			//var data = []string{power, temp, impedance, seconds}
-			//err = writer.Write(data)
-			//if err != nil {
-			//	panic(err)
-			//}
+			// if secondInt == the previous value then
+			// secondInt = previous value + .25
+			if len(secondValues) > 0 {
+				previousSecondsValue := secondValues[len(secondValues)-1]
+				//newSecondsValue := previousSecondsValue + float64(1/(fps+1))
+				newSecondsValue := previousSecondsValue + 0.20
+				fmt.Print(fmt.Sprintf("newSecondsValues: %f\n", newSecondsValue))
+				secondValues = append(secondValues, newSecondsValue) // use FPS value
+			} else {
+				secondValues = append(secondValues, float64(secondInt))
+			}
 		}
-
-		//impedanceSeries := chart.ContinuousSeries{
-		//	XValues: secondValues,
-		//	YValues: impedanceValues,
-		//}
-
-		//graph := chart.Chart{
-		//	Series: []chart.Series{
-		//		chart.ContinuousSeries{
-		//			XValues: []float64{1.0, 2.0, 3.0, 4.0},
-		//			YValues: []float64{1.0, 2.0, 3.0, 4.0},
-		//		},
-		//	},
-		//}
-		//
-		//buffer := bytes.NewBuffer([]byte{})
-		//err = graph.Render(chart.PNG, buffer)
-		//if err != nil {
-		//	panic(err)
-		//}
 	}
-	fmt.Println(impedanceValues)
-	fmt.Println(tempValues)
-	fmt.Println(secondValues)
+	impedanceSeries := chart.ContinuousSeries{
+		XValues: secondValues,
+		YValues: impedanceValues,
+		YAxis: chart.YAxisType(1),
+	}
 	tempSeries := chart.ContinuousSeries{
 		XValues: secondValues,
 		YValues: tempValues,
@@ -152,13 +149,18 @@ func main(){
 		XAxis: chart.XAxis{
 			Name: "Time",
 		},
-		//YAxisSecondary:
 		YAxis: chart.YAxis{
 			Name: "Temperature",
 		},
-		//Series: []chart.Series{impedanceSeries, tempSeries},
-		Series: []chart.Series{tempSeries},
+		YAxisSecondary: chart.YAxis{
+			Name: "Impedance",
+		},
+		Series: []chart.Series{tempSeries, impedanceSeries},
 	}
+
+	fmt.Println(impedanceValues)
+	fmt.Println(tempValues)
+	fmt.Println(secondValues)
 
 	buffer := bytes.NewBuffer([]byte{})
 	err = graph.Render(chart.PNG, buffer)
