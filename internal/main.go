@@ -36,7 +36,7 @@ func main(){
 		fmt.Println(err)
 		return
 	}
-	svc, err := ffmpeg.New(ff)
+	//svc, err := ffmpeg.New(ff)
 	_, err = ffmpeg.New(ff)
 	if err != nil {
 		fmt.Println("new ffmpeg")
@@ -46,8 +46,8 @@ func main(){
 
 	//sourceFile := "./source/IMG_1532.MOV"
 
-	sourceFile := "./source/LAE.MOV"
-	err = svc.ExtractFrames(sourceFile, "./dist", fps)
+	//sourceFile := "./source/LAE.MOV"
+	//err = svc.ExtractFrames(sourceFile, "./dist", fps)
 	if err != nil {
 		fmt.Println("failed extracting frames")
 		fmt.Println(err)
@@ -126,10 +126,14 @@ func main(){
 			// secondInt = previous value + .25
 			if len(secondValues) > 0 {
 				previousSecondsValue := secondValues[len(secondValues)-1]
-				//newSecondsValue := previousSecondsValue + float64(1/(fps+1))
-				newSecondsValue := previousSecondsValue + 0.20
-				fmt.Print(fmt.Sprintf("newSecondsValues: %f\n", newSecondsValue))
-				secondValues = append(secondValues, newSecondsValue) // use FPS value
+				if previousSecondsValue <= float64(secondInt) {
+					//newSecondsValue := previousSecondsValue + float64(1/(fps+1))
+					newSecondsValue := previousSecondsValue + 0.20
+					fmt.Print(fmt.Sprintf("newSecondsValues: %f\n", newSecondsValue))
+					secondValues = append(secondValues, newSecondsValue) // use FPS value
+				} else {
+					secondValues = append(secondValues, float64(secondInt))
+				}
 			} else {
 				secondValues = append(secondValues, float64(secondInt))
 			}
