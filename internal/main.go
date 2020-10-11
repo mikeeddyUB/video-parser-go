@@ -13,8 +13,11 @@ import (
 	"image"
 	"image/jpeg"
 	"log"
+	"math"
 	"os"
+	"path/filepath"
 	"strconv"
+	"strings"
 )
 
 const (fps = 4)
@@ -36,7 +39,7 @@ func main(){
 		fmt.Println(err)
 		return
 	}
-	//svc, err := ffmpeg.New(ff)
+	svc, err := ffmpeg.New(ff)
 	_, err = ffmpeg.New(ff)
 	if err != nil {
 		fmt.Println("new ffmpeg")
@@ -46,8 +49,10 @@ func main(){
 
 	//sourceFile := "./source/IMG_1532.MOV"
 
-	//sourceFile := "./source/LAE.MOV"
-	//err = svc.ExtractFrames(sourceFile, "./dist", fps)
+	sourceFile := "./source/LAE.MOV"
+	fmt.Printf("Reading video file: %s\n", sourceFile)
+	err = svc.ExtractFrames(sourceFile, "./dist", fps)
+	fmt.Println("Finished creating frames from video")
 	if err != nil {
 		fmt.Println("failed extracting frames")
 		fmt.Println(err)
@@ -58,13 +63,18 @@ func main(){
 	var impedanceValues []float64
 	var tempValues []float64
 	var secondValues []float64
+	var powerValues []int
 	// 00001 -> 00044
 	//totalFiles := 45
-	totalFiles := 174
+	//totalFiles := 174
+	totalFiles := numFilesInDir()
+	fmt.Printf("found %d files\n", totalFiles)
+	// programmatically figure out how many files there are
+	// stat for files that match ./dist/framesX?
 	for i := 1; i < totalFiles; i++ {
 	//for i := 1; i < 15; i++ {
 		file := fmt.Sprintf("./dist/frames%05d.jpg", i)
-		fmt.Println(file)
+		//fmt.Println(file)
 		f, err := os.Open(file)
 		if err != nil {
 			panic(err)
@@ -81,55 +91,50 @@ func main(){
 		impedance, err := getTextFromImage(3)
 		seconds, err := getTextFromImage(4)
 
-		//secondsNum, err := strconv.Atoi(seconds)
-		//fmt.Println("checking condition")
-		//fmt.Println(power)
-		//fmt.Println(temp)
-		//fmt.Println(impedance)
-		//fmt.Println(seconds)
 		if len(power) > 0 && len(temp) > 0 && len(impedance) > 0 && len(seconds) > 0 {
-			fmt.Println(fmt.Sprintf("file      : %s", file))
-			fmt.Println(fmt.Sprintf("power     : %s", power))
-			fmt.Println(fmt.Sprintf("temp      : %s", temp))
-			fmt.Println(fmt.Sprintf("impedance : %s", impedance))
-			fmt.Println(fmt.Sprintf("seconds   : %s", seconds))
 			_, err := strconv.Atoi(power)
 			if err != nil {
-				//panic(err)
+				printAllValues(temp, impedance, power, seconds, "power")
 				continue
 			}
 
 			impedanceInt, err := strconv.Atoi(impedance)
 			if err != nil {
-				//panic(err)
+				printAllValues(temp, impedance, power, seconds, "impedance")
 				continue
 			}
 
 			tempInt, err := strconv.Atoi(temp)
 			if err != nil {
-				//panic(err)
+				printAllValues(temp, impedance, power, seconds, "temp")
 				continue
 			}
 
 			secondInt, err := strconv.Atoi(seconds)
 			if err != nil {
-				//panic(err)
+				printAllValues(temp, impedance, power, seconds, "time")
 				continue
 			}
 
-			//fmt.Println(impedance)
-			//fmt.Println(impedanceInt)
-			//fmt.Println(float64(impedanceInt))
+			powerInt, err := strconv.Atoi(power)
+			if err != nil {
+				printAllValues(temp, impedance, power, seconds, "power")
+				continue
+			}
+
 			impedanceValues = append(impedanceValues, float64(impedanceInt))
 			tempValues = append(tempValues, float64(tempInt))
+			powerValues = append(powerValues, powerInt)
 			// if secondInt == the previous value then
 			// secondInt = previous value + .25
 			if len(secondValues) > 0 {
 				previousSecondsValue := secondValues[len(secondValues)-1]
-				if previousSecondsValue <= float64(secondInt) {
-					//newSecondsValue := previousSecondsValue + float64(1/(fps+1))
-					newSecondsValue := previousSecondsValue + 0.20
-					fmt.Print(fmt.Sprintf("newSecondsValues: %f\n", newSecondsValue))
+				//fmt.Printf("-----\nprevious second: %f\n", previousSecondsValue)
+				//fmt.Printf("current second: %d\n", secondInt)
+				if int(math.Floor(previousSecondsValue)) == secondInt {
+					newSecondsValue := previousSecondsValue + float64(1)/float64(fps)
+					//newSecondsValue := previousSecondsValue + 0.25
+					//fmt.Print(fmt.Sprintf("newSecondsValues: %f\n", newSecondsValue))
 					secondValues = append(secondValues, newSecondsValue) // use FPS value
 				} else {
 					secondValues = append(secondValues, float64(secondInt))
@@ -149,22 +154,21 @@ func main(){
 		YValues: tempValues,
 	}
 
+	//tempRange := chart.Range()
+
 	graph := chart.Chart{
 		XAxis: chart.XAxis{
 			Name: "Time",
 		},
 		YAxis: chart.YAxis{
 			Name: "Temperature",
+			//Range: tempRange,
 		},
 		YAxisSecondary: chart.YAxis{
 			Name: "Impedance",
 		},
 		Series: []chart.Series{tempSeries, impedanceSeries},
 	}
-
-	fmt.Println(impedanceValues)
-	fmt.Println(tempValues)
-	fmt.Println(secondValues)
 
 	buffer := bytes.NewBuffer([]byte{})
 	err = graph.Render(chart.PNG, buffer)
@@ -184,6 +188,9 @@ func main(){
 	if err != nil {
 		log.Println(err)
 	}
+
+	writeToCSV(impedanceValues, tempValues, powerValues, secondValues)
+	// write to CSV values
 }
 
 func writeImage(num int, img image.Image, pt image.Point) {
@@ -216,4 +223,54 @@ func getTextFromImage(num int) (string, error) {
 	text, _ := client.Text()
 	//return strconv.Atoi(text)
 	return text, nil
+}
+
+func printAllValues(temp string, impedance string, power string, seconds string, value string) {
+	fmt.Printf("invalid value for %s\n  temp   : %s\n  impedance: %s\n  power    : %s\n seconds  : %s\n", value, temp, impedance, power, seconds)
+}
+
+func writeToCSV(impedances []float64, temps []float64, powers []int, seconds []float64){
+	outputCSVFile := "result.csv"
+	fmt.Printf("Writing to %s\n", outputCSVFile)
+	file, err := os.Create(outputCSVFile)
+	if err != nil {
+		panic(err)
+	}
+	defer file.Close()
+
+	writer := csv.NewWriter(file)
+	defer writer.Flush()
+
+	var data = []string{"time", "temperature", "power", "impedance"}
+	err = writer.Write(data)
+	if err != nil {
+		panic(err)
+	}
+
+	for i, second := range seconds {
+		secondStr := fmt.Sprintf("%f", second)
+		tempStr := fmt.Sprintf("%f", temps[i])
+		powerStr := fmt.Sprintf("%d", powers[i])
+		impedanceStr := fmt.Sprintf("%f", impedances[i])
+		data = []string{secondStr, tempStr, powerStr, impedanceStr}
+		err = writer.Write(data)
+		if err != nil {
+			panic(err)
+		}
+	}
+		//checkError("Cannot write to file", err)
+}
+
+func numFilesInDir() int {
+	root := "./dist"
+	fileCount := 0
+	// im sure theres a better way to do this
+	filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+		//fmt.Println(info.Name())
+		if strings.Contains(info.Name(), "frames") {
+			fileCount++
+		}
+		return nil
+	})
+	return fileCount
 }
