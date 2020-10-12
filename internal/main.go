@@ -20,7 +20,10 @@ import (
 	"strings"
 )
 
-const (fps = 4)
+const (
+	fps = 4
+	outputDir = "./dist"
+	)
 
 func main(){
 
@@ -51,7 +54,7 @@ func main(){
 
 	sourceFile := "./source/LAE.MOV"
 	fmt.Printf("Reading video file: %s\n", sourceFile)
-	err = svc.ExtractFrames(sourceFile, "./dist", fps)
+	err = svc.ExtractFrames(sourceFile, outputDir, fps)
 	fmt.Println("Finished creating frames from video")
 	if err != nil {
 		fmt.Println("failed extracting frames")
@@ -64,17 +67,10 @@ func main(){
 	var tempValues []float64
 	var secondValues []float64
 	var powerValues []int
-	// 00001 -> 00044
-	//totalFiles := 45
-	//totalFiles := 174
-	totalFiles := numFilesInDir()
+	totalFiles := numFilesInDir(outputDir, "frames")
 	fmt.Printf("found %d files\n", totalFiles)
-	// programmatically figure out how many files there are
-	// stat for files that match ./dist/framesX?
 	for i := 1; i < totalFiles; i++ {
-	//for i := 1; i < 15; i++ {
-		file := fmt.Sprintf("./dist/frames%05d.jpg", i)
-		//fmt.Println(file)
+		file := fmt.Sprintf("%s/frames%05d.jpg", outputDir, i)
 		f, err := os.Open(file)
 		if err != nil {
 			panic(err)
@@ -125,8 +121,6 @@ func main(){
 			impedanceValues = append(impedanceValues, float64(impedanceInt))
 			tempValues = append(tempValues, float64(tempInt))
 			powerValues = append(powerValues, powerInt)
-			// if secondInt == the previous value then
-			// secondInt = previous value + .25
 			if len(secondValues) > 0 {
 				previousSecondsValue := secondValues[len(secondValues)-1]
 				//fmt.Printf("-----\nprevious second: %f\n", previousSecondsValue)
@@ -184,13 +178,11 @@ func main(){
 	opts.Quality = 100
 
 	err = jpeg.Encode(out, im, &opts)
-	//jpeg.Encode(out, img, nil)
 	if err != nil {
 		log.Println(err)
 	}
 
 	writeToCSV(impedanceValues, tempValues, powerValues, secondValues)
-	// write to CSV values
 }
 
 func writeImage(num int, img image.Image, pt image.Point) {
@@ -200,7 +192,7 @@ func writeImage(num int, img image.Image, pt image.Point) {
 		Anchor:  pt,
 		Mode:   cutter.TopLeft,
 	})
-	fOut, err := os.Create(fmt.Sprintf("./dist/out_image%d.jpg", num))
+	fOut, err := os.Create(fmt.Sprintf("%s/out_image%d.jpg", outputDir, num))
 	if err != nil {
 		panic(err)
 	}
@@ -219,9 +211,8 @@ func getTextFromImage(num int) (string, error) {
 	client := gosseract.NewClient()
 	client.SetWhitelist("0123456789W")
 	defer client.Close()
-	client.SetImage(fmt.Sprintf("./dist/out_image%d.jpg", num))
+	client.SetImage(fmt.Sprintf("%s/out_image%d.jpg", outputDir, num))
 	text, _ := client.Text()
-	//return strconv.Atoi(text)
 	return text, nil
 }
 
@@ -248,26 +239,23 @@ func writeToCSV(impedances []float64, temps []float64, powers []int, seconds []f
 	}
 
 	for i, second := range seconds {
-		secondStr := fmt.Sprintf("%f", second)
-		tempStr := fmt.Sprintf("%f", temps[i])
+		secondStr := fmt.Sprintf("%.2f", second)
+		tempStr := fmt.Sprintf("%d", int(temps[i]))
 		powerStr := fmt.Sprintf("%d", powers[i])
-		impedanceStr := fmt.Sprintf("%f", impedances[i])
+		impedanceStr := fmt.Sprintf("%d", int(impedances[i]))
 		data = []string{secondStr, tempStr, powerStr, impedanceStr}
 		err = writer.Write(data)
 		if err != nil {
 			panic(err)
 		}
 	}
-		//checkError("Cannot write to file", err)
 }
 
-func numFilesInDir() int {
-	root := "./dist"
+func numFilesInDir(dir string, substr string) int {
 	fileCount := 0
 	// im sure theres a better way to do this
-	filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
-		//fmt.Println(info.Name())
-		if strings.Contains(info.Name(), "frames") {
+	filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+		if strings.Contains(info.Name(), substr) {
 			fileCount++
 		}
 		return nil
