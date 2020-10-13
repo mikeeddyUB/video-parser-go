@@ -59,6 +59,7 @@ func main(){
 	var tempValues []float64
 	var secondValues []float64
 	var powerValues []int
+	var files []string
 
 	totalFiles := numFilesInDir(outputDir, "frames")
 	fmt.Printf("Found %d files\n", totalFiles)
@@ -66,10 +67,10 @@ func main(){
 	client.SetWhitelist("0123456789W")
 	defer client.Close()
 	for i := 1; i < totalFiles; i++ {
-		loopStuff(i, client, &impedanceValues, &tempValues, &secondValues, &powerValues)
+		loopStuff(i, client, &impedanceValues, &tempValues, &secondValues, &powerValues, &files)
 	}
 
-	writeToCSV(impedanceValues, tempValues, powerValues, secondValues)
+	writeToCSV(impedanceValues, tempValues, powerValues, secondValues, files)
 }
 
 func loopStuff(
@@ -78,7 +79,8 @@ func loopStuff(
 	impedanceValues *[]float64,
 	tempValues *[]float64,
 	secondValues *[]float64,
-	powerValues *[]int) {
+	powerValues *[]int,
+	files *[]string) {
 
 	file := fmt.Sprintf("%s/frames%05d.jpg", outputDir, i)
 	f, err := os.Open(file)
@@ -88,10 +90,10 @@ func loopStuff(
 	img, _, err := image.Decode(f)
 	defer f.Close()
 	img = imaging.Rotate270(img)
-	power, err := extractText(client, img, image.Point{720, 220})
-	temp, err := extractText(client, img, image.Point{975, 220})
-	impedance, err := extractText(client, img, image.Point{1220, 220})
-	seconds, err := extractText(client, img, image.Point{1255, 320})
+	power, err := extractText(client, img, image.Point{720, 220}, 1)
+	temp, err := extractText(client, img, image.Point{975, 220}, 2)
+	impedance, err := extractText(client, img, image.Point{1220, 220}, 3)
+	seconds, err := extractText(client, img, image.Point{1255, 320}, 4)
 
 	fmt.Print(seconds)
 	if len(power) > 0 && len(temp) > 0 && len(impedance) > 0 && len(seconds) > 0 {
@@ -128,6 +130,7 @@ func loopStuff(
 		*impedanceValues = append(*impedanceValues, float64(impedanceInt))
 		*tempValues = append(*tempValues, float64(tempInt))
 		*powerValues = append(*powerValues, powerInt)
+		*files = append(*files, file)
 		if len(*secondValues) > 0 {
 			previousSecondsValue := (*secondValues)[len(*secondValues)-1]
 			if int(math.Floor(previousSecondsValue)) == secondInt {
@@ -142,7 +145,7 @@ func loopStuff(
 	}
 }
 
-func extractText(client *gosseract.Client, img image.Image, pt image.Point) (string, error) {
+func extractText(client *gosseract.Client, img image.Image, pt image.Point, i int) (string, error) {
 	croppedImg, err := cutter.Crop(img, cutter.Config{
 		Width:  120,
 		Height: 100,
@@ -157,6 +160,14 @@ func extractText(client *gosseract.Client, img image.Image, pt image.Point) (str
 	if err != nil {
 		return "", err
 	}
+	// optionally write to disk for debugging
+	fOut, err := os.Create(fmt.Sprintf("%s/out_image%d.jpg", outputDir, i))
+	defer fOut.Close()
+
+    opt := jpeg.Options{Quality: 100}
+    err = jpeg.Encode(fOut, croppedImg, &opt)
+	//
+
 	client.SetImageFromBytes(buf.Bytes())
 	text, _ := client.Text()
 	return text, nil
@@ -166,7 +177,7 @@ func printAllValues(temp string, impedance string, power string, seconds string,
 	fmt.Printf("invalid value for %s\n  temp   : %s\n  impedance: %s\n  power    : %s\n seconds  : %s\n file: %s\n", value, temp, impedance, power, seconds, file)
 }
 
-func writeToCSV(impedances []float64, temps []float64, powers []int, seconds []float64){
+func writeToCSV(impedances []float64, temps []float64, powers []int, seconds []float64, files []string){
 	outputCSVFile := fmt.Sprintf("%s/result.csv", outputDir)
 	fmt.Printf("Writing to %s\n", outputCSVFile)
 	file, err := os.Create(outputCSVFile)
@@ -178,7 +189,7 @@ func writeToCSV(impedances []float64, temps []float64, powers []int, seconds []f
 	writer := csv.NewWriter(file)
 	defer writer.Flush()
 
-	var data = []string{"time", "temperature", "power", "impedance"}
+	var data = []string{"time", "temperature", "power", "impedance", "file"}
 	err = writer.Write(data)
 	if err != nil {
 		panic(err)
@@ -190,7 +201,7 @@ func writeToCSV(impedances []float64, temps []float64, powers []int, seconds []f
 		powerStr := fmt.Sprintf("%d", powers[i])
 		impedanceStr := fmt.Sprintf("%d", int(impedances[i]))
 		fmt.Println(tempStr)
-		data = []string{secondStr, tempStr, powerStr, impedanceStr}
+		data = []string{secondStr, tempStr, powerStr, impedanceStr, files[i]}
 		err = writer.Write(data)
 		if err != nil {
 			panic(err)
