@@ -63,20 +63,22 @@ func main(){
 	totalFiles := numFilesInDir(outputDir, "frames")
 	fmt.Printf("Found %d files\n", totalFiles)
 	client := gosseract.NewClient()
-	client.SetWhitelist("0123456789F")
+	client.SetWhitelist("0123456789W")
 	defer client.Close()
 	for i := 1; i < totalFiles; i++ {
-		impedanceValues, tempValues, secondValues, powerValues = loopStuff(i, client)
+		loopStuff(i, client, &impedanceValues, &tempValues, &secondValues, &powerValues)
 	}
 
 	writeToCSV(impedanceValues, tempValues, powerValues, secondValues)
 }
 
-func loopStuff(i int, client *gosseract.Client) ([]float64, []float64, []float64, []int){
-	var impedanceValues []float64
-	var tempValues []float64
-	var secondValues []float64
-	var powerValues []int
+func loopStuff(
+	i int,
+	client *gosseract.Client,
+	impedanceValues *[]float64,
+	tempValues *[]float64,
+	secondValues *[]float64,
+	powerValues *[]int) {
 
 	file := fmt.Sprintf("%s/frames%05d.jpg", outputDir, i)
 	f, err := os.Open(file)
@@ -91,53 +93,53 @@ func loopStuff(i int, client *gosseract.Client) ([]float64, []float64, []float64
 	impedance, err := extractText(client, img, image.Point{1220, 220})
 	seconds, err := extractText(client, img, image.Point{1255, 320})
 
+	fmt.Print(seconds)
 	if len(power) > 0 && len(temp) > 0 && len(impedance) > 0 && len(seconds) > 0 {
 		_, err := strconv.Atoi(power)
 		if err != nil {
 			printAllValues(temp, impedance, power, seconds, "power", file)
-			return impedanceValues, tempValues, secondValues, powerValues
+			return
 		}
 
 		impedanceInt, err := strconv.Atoi(impedance)
 		if err != nil {
 			printAllValues(temp, impedance, power, seconds, "impedance", file)
-			return impedanceValues, tempValues, secondValues, powerValues
+			return
 		}
 
 		tempInt, err := strconv.Atoi(temp)
 		if err != nil {
 			printAllValues(temp, impedance, power, seconds, "temp", file)
-			return impedanceValues, tempValues, secondValues, powerValues
+			return
 		}
 
 		secondInt, err := strconv.Atoi(seconds)
 		if err != nil {
 			printAllValues(temp, impedance, power, seconds, "time", file)
-			return impedanceValues, tempValues, secondValues, powerValues
+			return
 		}
 
 		powerInt, err := strconv.Atoi(power)
 		if err != nil {
 			printAllValues(temp, impedance, power, seconds, "power", file)
-			return impedanceValues, tempValues, secondValues, powerValues
+			return
 		}
 
-		impedanceValues = append(impedanceValues, float64(impedanceInt))
-		tempValues = append(tempValues, float64(tempInt))
-		powerValues = append(powerValues, powerInt)
-		if len(secondValues) > 0 {
-			previousSecondsValue := secondValues[len(secondValues)-1]
+		*impedanceValues = append(*impedanceValues, float64(impedanceInt))
+		*tempValues = append(*tempValues, float64(tempInt))
+		*powerValues = append(*powerValues, powerInt)
+		if len(*secondValues) > 0 {
+			previousSecondsValue := (*secondValues)[len(*secondValues)-1]
 			if int(math.Floor(previousSecondsValue)) == secondInt {
 				newSecondsValue := previousSecondsValue + float64(1)/float64(fps)
-				secondValues = append(secondValues, newSecondsValue)
+				*secondValues = append(*secondValues, newSecondsValue)
 			} else {
-				secondValues = append(secondValues, float64(secondInt))
+				*secondValues = append(*secondValues, float64(secondInt))
 			}
 		} else {
-			secondValues = append(secondValues, float64(secondInt))
+			*secondValues = append(*secondValues, float64(secondInt))
 		}
 	}
-	return impedanceValues, tempValues, secondValues, powerValues
 }
 
 func extractText(client *gosseract.Client, img image.Image, pt image.Point) (string, error) {
@@ -181,12 +183,13 @@ func writeToCSV(impedances []float64, temps []float64, powers []int, seconds []f
 	if err != nil {
 		panic(err)
 	}
-
+	fmt.Printf("num seconds: %d\n", len(seconds))
 	for i, second := range seconds {
 		secondStr := fmt.Sprintf("%.2f", second)
 		tempStr := fmt.Sprintf("%d", int(temps[i]))
 		powerStr := fmt.Sprintf("%d", powers[i])
 		impedanceStr := fmt.Sprintf("%d", int(impedances[i]))
+		fmt.Println(tempStr)
 		data = []string{secondStr, tempStr, powerStr, impedanceStr}
 		err = writer.Write(data)
 		if err != nil {
